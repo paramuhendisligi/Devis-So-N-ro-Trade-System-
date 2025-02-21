@@ -1,0 +1,128 @@
+//@version=5
+indicator("Devis'So Trend  ", overlay=true)
+
+// Plot Zigzag lines
+zigzagHigh = ta.highestbars(high, 10) == 0 ? high : na
+zigzagLow = ta.lowestbars(low, 10) == 0 ? low : na
+
+// Define input parameters
+zigzagHighPeriod = input(title='Zigzag High Period', defval=10)
+zigzagLowPeriod = input(title='Zigzag Low Period', defval=10)
+minMovementPercent = input.float(title='Minimum Movement Percent', defval=0.160, minval=0.01, maxval=100, step=0.01)
+
+// Calculate minimum movement required for a signal
+minMovement = close * minMovementPercent / 100
+
+// Calculate Zigzag high and low values for the last X bars
+zigzagHighX = ta.highestbars(high, zigzagHighPeriod)
+zigzagLowX = ta.lowestbars(low, zigzagLowPeriod)
+
+// Define Long Mumu signal when Zigzag high is moving up and Short Mumu signal when Zigzag low is moving down
+LongMumu = zigzagHigh > ta.valuewhen(zigzagHighX == 0, zigzagHigh, 1) and close - ta.valuewhen(zigzagHighX == 0, close, 1) >= minMovement
+ShortMumu = zigzagLow < ta.valuewhen(zigzagLowX == 0, zigzagLow, 1) and ta.valuewhen(zigzagLowX == 0, close, 1) - close >= minMovement
+
+
+
+// Calculate moving averages and standard deviations
+maPeriod = input(title="Moving Average Period", defval=20)
+stdDevMultiplier = input(title="Standard Deviation Multiplier", defval=2.0)
+
+ma = ta.sma(close, maPeriod)
+upperBand = ma + stdDevMultiplier * ta.stdev(close, maPeriod)
+lowerBand = ma - stdDevMultiplier * ta.stdev(close, maPeriod)
+
+// Long signal with moving average and upper band condition
+longSignal = LongMumu and close > ma and close > upperBand
+// Short signal with moving average and lower band condition
+shortSignal = ShortMumu and close < ma and close < lowerBand
+
+
+// Convert Long Mumu and Short Mumu signals to float values
+longMumuFloat = LongMumu ? close : na
+shortMumuFloat = ShortMumu ? close : na
+
+// Calculate moving averages for long and short Mumu signal candles
+longMumuMovingAverage = ta.sma(longMumuFloat, 2)
+shortMumuMovingAverage = ta.sma(shortMumuFloat, 2)
+
+// Calculate standard deviations for long and short Mumu signal candles
+longMumuStdDev = ta.stdev(longMumuFloat, 2)
+shortMumuStdDev = ta.stdev(shortMumuFloat, 2)
+
+
+// Find pullback levels
+var float longPullbackLevel = na
+var float shortPullbackLevel = na
+if LongMumu
+    longPullbackLevel := close
+if ShortMumu 
+    shortPullbackLevel := close
+
+// Define consecutiveUp and consecutiveDown variables
+var consecutiveUp = 0
+var consecutiveDown = 0
+consecutiveUp := LongMumu ? nz(consecutiveUp[1]) + 1 : 0
+consecutiveDown := ShortMumu ? nz(consecutiveDown[1]) + 1 : 0
+
+// Check if consecutiveUp is greater than or equal to 0 for the last 2 bars
+consecutiveUpFilter = (consecutiveUp >= 1 or consecutiveUp[1] >= 1 )
+consecutiveUpFilter2 = (consecutiveDown >= 1 or consecutiveDown[1] >= 1 )
+
+
+// Calculate moving averages for consecutiveUp and consecutiveDown
+ma_consecutiveUp = ta.sma(consecutiveUp, maPeriod)
+ma_consecutiveDown = ta.sma(consecutiveDown, maPeriod)
+
+// Find candles where price is above the moving average, crossover below LongPullbackLevel, and not crossover above upper band
+shortPotentialCandles = close > ma and ta.crossunder(close, longPullbackLevel) and not ta.crossunder(close, upperBand)
+
+
+// Find candles where price crosses above shortPullbackLevel, upperBand, and below middle band
+longPotentialCandles2 = ta.crossover(close, shortPullbackLevel) and ta.crossover(close,shortMumuMovingAverage  ) and close < ma 
+
+
+// Find crossover points
+crossoverUp = ta.crossover(ma_consecutiveUp, ma_consecutiveDown)
+crossoverDown = ta.crossunder(ma_consecutiveUp, ma_consecutiveDown)
+
+// Generate long and short signals based on crossover points
+openlong = crossoverUp
+openshort = crossoverDown
+
+allSignals = LongMumu ? low : ShortMumu  ? high : na
+
+// Define inputs
+ma_length = input(10, "Moving Average Length")
+
+// Calculate moving average
+ma_allSignals = ta.sma(allSignals, ma_length)
+plot(ma_allSignals, title='Moving Average', color=color.blue, linewidth=2)
+
+allSignals2 = shortPotentialCandles ? low : longPotentialCandles2 ? high : na
+// Calculate moving average
+ma_allSignals2 = ta.sma(allSignals2, ma_length)
+plot(ma_allSignals2, title='Moving Average', color=color.rgb(217, 17, 224), linewidth=2)
+
+plot((ma_allSignals2+ma_allSignals)/2, title='Moving Average', color=#dce011, linewidth=2)
+
+// Calculate average buyer and seller volumes
+Volume = volume
+// Plot average buyer and seller volumes
+
+ma_volumelength = input(7, "volume Length")
+averageVolume = ta.sma(volume, ma_volumelength)
+// Plot average volume
+
+// Find candles that cross below the moving average (short signals)
+shortCrossover = ta.crossunder(close, ma_allSignals2) 
+plotshape(shortCrossover, title='SELL', text='Devis-So',color=color.red, style=shape.triangledown, location=location.abovebar, size=size.small)
+
+// Find candles that cross above the moving average (long signals)
+longCrossover = ta.crossover(close, ma_allSignals2) 
+
+
+plotshape(longCrossover, title='BUY', text='Devis-So',color=color.green, style=shape.triangleup, location=location.belowbar, size=size.small)
+
+// Find candles that cross above the moving average (long signals)
+cross = ta.cross(close, ma_allSignals2) and  ta.cross(close, ma_allSignals) 
+plotshape(cross, title='trade', text='trade',color=#08e5ec, style=shape.xcross, location=location.belowbar, size=size.small)
